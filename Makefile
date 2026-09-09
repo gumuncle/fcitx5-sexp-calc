@@ -1,12 +1,13 @@
 # fcitx5-sexp-calc
-#   make install  ... symlink sexp_calc.lua into ~/.local/share/fcitx5/lua/imeapi/extensions/
-#   make restart  ... restart fcitx5 to load it (the IM falls back to the plain keyboard; Ctrl+Space switches back)
-#   make test     ... Lua unit tests
-#   make e2e      ... end-to-end test over DBus (fcitx5 must be running; needs python-gobject)
+#   make install  ... symlink sexp_calc.lua and sexp_core.lua into the fcitx5-lua extensions dir
+#   make restart  ... restart fcitx5 to load them (Linux: systemd user unit; macOS: prints how)
+#   make test     ... Lua unit tests (uses lua5.5, lua5.4 or lua, whichever is found)
+#   make e2e      ... end-to-end test over DBus (Linux only; fcitx5 must be running; needs python-gobject)
 
-LUA      ?= lua5.5
+UNAME    := $(shell uname -s)
+LUA      ?= $(shell command -v lua5.5 || command -v lua5.4 || command -v lua)
 EXT_DIR  := $(HOME)/.local/share/fcitx5/lua/imeapi/extensions
-SRC      := $(abspath sexp_calc.lua)
+FILES    := sexp_calc.lua sexp_core.lua
 UNIT     := app-org.fcitx.Fcitx5@autostart.service
 
 .PHONY: all test e2e install uninstall restart status
@@ -23,16 +24,22 @@ e2e:
 
 install:
 	mkdir -p $(EXT_DIR)
-	ln -sfn $(SRC) $(EXT_DIR)/sexp_calc.lua
-	@echo "linked: $(EXT_DIR)/sexp_calc.lua -> $(SRC)"
+	for f in $(FILES); do ln -sfn $(CURDIR)/$$f $(EXT_DIR)/$$f; done
+	@ls -l $(addprefix $(EXT_DIR)/,$(FILES))
 	@echo "Run 'make restart' to load it"
 
 uninstall:
-	rm -f $(EXT_DIR)/sexp_calc.lua
+	rm -f $(addprefix $(EXT_DIR)/,$(FILES))
 
 restart:
+ifeq ($(UNAME),Darwin)
+	@echo "fcitx5-macos: choose 'Restart' from the Fcitx5 menu bar icon"
+else
 	systemctl --user restart $(UNIT)
+endif
 
 status:
-	@ls -l $(EXT_DIR)/sexp_calc.lua 2>/dev/null || echo "not installed"
+	@ls -l $(addprefix $(EXT_DIR)/,$(FILES)) 2>/dev/null || echo "not installed"
+ifeq ($(UNAME),Linux)
 	@systemctl --user is-active $(UNIT)
+endif

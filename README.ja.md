@@ -7,7 +7,7 @@ fcitx5 の QuickPhrase 上で S式を評価する電卓。`(+ 1 2)` と打つと
 ![デモ: QuickPhrase で (+ 1 2) と打つと 3 が確定される](docs/demo.gif)
 
 - IME 非依存: Mozc が有効でも英語キーボードでも同じように動く
-- fcitx5-lua の QuickPhrase ハンドラとして実装 (本体は `sexp_calc.lua` 1 ファイル)
+- fcitx5-lua の QuickPhrase ハンドラとして実装。評価器 `sexp_core.lua` と fcitx5 アダプタ `sexp_calc.lua` の 2 ファイル
 
 ## 必要なもの
 
@@ -18,13 +18,28 @@ fcitx5 の QuickPhrase 上で S式を評価する電卓。`(+ 1 2)` と打つと
 ## インストール
 
 ```sh
-make install   # ~/.local/share/fcitx5/lua/imeapi/extensions/sexp_calc.lua -> リポジトリへのリンク
+make install   # ~/.local/share/fcitx5/lua/imeapi/extensions/ に sexp_calc.lua と sexp_core.lua のリンクを張る
 make restart   # fcitx5 を再起動して反映
 ```
 
 `make restart` は `systemctl --user restart app-org.fcitx.Fcitx5@autostart.service` を実行する。
 再起動後は IM の状態が英語キーボードに戻るので、Ctrl+Space などで Mozc に戻す。
 `fcitx5-remote -r` では新しく入れたアドオンが認識されなかった。
+
+## macOS (fcitx5-macos)
+
+fcitx5 には macOS 13.3 以降で動く移植版 [fcitx5-macos](https://github.com/fcitx-contrib/fcitx5-macos) があり、
+その[プラグイン集](https://github.com/fcitx-contrib/fcitx5-plugins)には fcitx5-lua と fcitx5-mozc の両方が含まれるため、
+同じ構成が組めるはず。作者は Mac 実機で未確認なので、動作報告を歓迎する。
+
+1. fcitx5-macos を入れ、Plugin Manager から `lua` プラグインを入れる (必要なら `mozc` なども)
+2. `make install` を実行する。fcitx5-macos のユーザーデータは Linux と同じ `~/.local/share/fcitx5` 配下
+3. メニューバーの Fcitx5 アイコンから Restart する。macOS では `make restart` はこの案内を表示するだけ
+4. QuickPhrase のトリガーキーを変更する。fcitx5 の `Super` は macOS では Command に当たり、既定の
+   `Cmd+`` (ウィンドウ切替) と `Cmd+;` (多くのアプリでスペルチェック) は既に使われている
+
+`make test` は `lua5.5` `lua5.4` `lua` のうち見つかったものを使うので Homebrew の `lua` で動く。
+`make e2e` は fcitx5 と DBus で通信するため Linux 専用。
 
 ## 使い方
 
@@ -60,7 +75,7 @@ Space か `1` キーで確定。変更後は `make restart`。
 ## 仕組み
 
 fcitx5-lua の imeapi アドオンは `lua/imeapi/extensions/*.lua` を起動時に読み込む。
-本拡張は `fcitx.addQuickPhraseHandler` でハンドラを登録し、QuickPhrase の入力文字列を受け取って
+`sexp_calc.lua` は同じディレクトリの `sexp_core.lua` から評価器を読み込み、`fcitx.addQuickPhraseHandler` でハンドラを登録し、QuickPhrase の入力文字列を受け取って
 `{確定文字列, 表示文字列, アクション}` の配列を返す。
 
 - `(` で始まる入力だけを扱い、`Break` (-1) で内蔵辞書・スペルチェックの候補を抑止する

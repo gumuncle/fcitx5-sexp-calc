@@ -8,7 +8,7 @@ Type `(+ 1 2)` and `3` is entered, in any application and with any input method 
 ![Demo: typing (+ 1 2) in QuickPhrase commits 3](docs/demo.gif)
 
 - Engine-independent: works the same whether Mozc, Pinyin or the plain keyboard is active, because it hooks into QuickPhrase rather than the engine
-- A single Lua file (`sexp_calc.lua`) running on [fcitx5-lua](https://github.com/fcitx/fcitx5-lua)
+- Two small Lua files running on [fcitx5-lua](https://github.com/fcitx/fcitx5-lua): the evaluator (`sexp_core.lua`) and the fcitx5 adapter (`sexp_calc.lua`)
 - The result is committed the moment the parentheses balance, with no extra keystroke
 
 ## Requirements
@@ -20,7 +20,7 @@ Type `(+ 1 2)` and `3` is entered, in any application and with any input method 
 ## Install
 
 ```sh
-make install   # symlinks sexp_calc.lua into ~/.local/share/fcitx5/lua/imeapi/extensions/
+make install   # symlinks sexp_calc.lua and sexp_core.lua into ~/.local/share/fcitx5/lua/imeapi/extensions/
 make restart   # restarts fcitx5 so the extension gets loaded
 ```
 
@@ -29,6 +29,24 @@ the unit name when fcitx5 is started through XDG autostart on a systemd user ses
 `UNIT` in the Makefile if your fcitx5 is started differently. After the restart fcitx5 falls back
 to the first input method (usually the plain keyboard), so switch back to your engine with
 Ctrl+Space. In testing, `fcitx5-remote -r` did not pick up newly installed addons.
+
+## macOS (fcitx5-macos)
+
+fcitx5 also runs on macOS 13.3 or later through [fcitx5-macos](https://github.com/fcitx-contrib/fcitx5-macos),
+and its [plugin repository](https://github.com/fcitx-contrib/fcitx5-plugins) ships both fcitx5-lua and
+fcitx5-mozc, so the same setup should work there. This has not been verified on a Mac by the author yet;
+reports are welcome.
+
+1. Install fcitx5-macos, open its Plugin Manager and install the `lua` plugin (plus `mozc` or another
+   engine if you want one).
+2. Run `make install`. fcitx5-macos keeps user data under `~/.local/share/fcitx5`, the same path as Linux.
+3. Restart fcitx5 from the Fcitx5 menu bar icon. On macOS `make restart` only prints this reminder.
+4. Change the QuickPhrase trigger key in the fcitx5 settings. fcitx5's `Super` is the Command key on
+   macOS, and the defaults `Cmd+`` (window cycling) and `Cmd+;` (spell checking in many apps) are
+   already taken.
+
+`make test` uses whichever of `lua5.5`, `lua5.4` or `lua` it finds, so Homebrew's `lua` works.
+`make e2e` is Linux-only because it talks to fcitx5 over DBus.
 
 ## Usage
 
@@ -66,8 +84,8 @@ exact or the magnitude exceeds 2^62. `(/ 6 3)` gives `2`, `(/ 7 2)` gives `3.5`,
 
 ## How it works
 
-The imeapi addon of fcitx5-lua loads `lua/imeapi/extensions/*.lua` at startup. This extension
-registers a handler with `fcitx.addQuickPhraseHandler`. The handler receives the current
+The imeapi addon of fcitx5-lua loads `lua/imeapi/extensions/*.lua` at startup. `sexp_calc.lua`
+loads the evaluator from `sexp_core.lua` next to it and registers a handler with `fcitx.addQuickPhraseHandler`. The handler receives the current
 QuickPhrase input and returns a list of `{commit_text, display_text, action}` entries.
 
 - Only input starting with `(` is handled. `Break` (-1) suppresses the built-in phrase
