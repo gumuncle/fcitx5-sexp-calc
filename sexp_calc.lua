@@ -1,27 +1,30 @@
--- sexp_calc.lua : fcitx5 QuickPhrase 用 S式電卓 (fcitx5-lua 拡張)
+-- sexp_calc.lua : S-expression calculator for fcitx5 QuickPhrase (fcitx5-lua extension)
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2026 Yusuke Furukawa
 --
--- 使い方:
---   1. QuickPhrase を起動する (既定キー: Super+` または Super+;)
---   2. "(+ 1 2)" のように S式を入力する
---   3. 閉じ括弧が揃った時点で評価され、結果 "3" がそのまま確定入力される
+-- Usage:
+--   1. Open QuickPhrase (default hotkeys: Super+` or Super+;)
+--   2. Type an S-expression such as "(+ 1 2)"
+--   3. As soon as the parentheses balance, the expression is evaluated and the
+--      result "3" is committed
 --
--- 設置場所: ~/.local/share/fcitx5/lua/imeapi/extensions/sexp_calc.lua
---   fcitx5-lua の imeapi アドオンが起動時に extensions/*.lua を自動で読み込む。
---   変更後は fcitx5 を再起動すると反映される (この環境では systemd 起動のため
---   `systemctl --user restart app-org.fcitx.Fcitx5@autostart.service`。`fcitx5-remote -r` では反映されなかった)。
+-- Location: ~/.local/share/fcitx5/lua/imeapi/extensions/sexp_calc.lua
+--   The imeapi addon of fcitx5-lua loads extensions/*.lua at startup.
+--   Restart fcitx5 after editing. When fcitx5 is started through XDG autostart on
+--   a systemd user session, that is
+--   `systemctl --user restart app-org.fcitx.Fcitx5@autostart.service`.
+--   `fcitx5-remote -r` did not pick up newly installed addons in testing.
 --
--- 設定:
---   AUTO_COMMIT = true  … 括弧が揃ったら即時確定 (既定)
---   AUTO_COMMIT = false … 結果を候補として表示し、Space か 1 キーで確定
+-- Configuration:
+--   AUTO_COMMIT = true  ... commit the result as soon as the parentheses balance (default)
+--   AUTO_COMMIT = false ... show the result as a candidate; Space or 1 commits it
 --
--- 対応:
---   四則演算 + - * / (可変長引数)、mod / remainder / quotient、expt / sqrt / abs、
---   min / max、floor / ceiling / round / truncate、exp / log / sin / cos / tan / atan、
---   gcd / lcm、1+ / 1-、比較 = < > <= >=、not、定数 pi / e、
---   特殊形式 if / and / or / let
---   数値は Lua の tonumber に従う (10, -3, 1.5, 1e3, 0x10 など)
+-- Supported:
+--   + - * / (variadic), mod / remainder / quotient, expt / sqrt / abs,
+--   min / max, floor / ceiling / round / truncate, exp / log / sin / cos / tan / atan,
+--   gcd / lcm, 1+ / 1-, comparisons = < > <= >=, not, constants pi / e,
+--   special forms if / and / or / let
+--   Number literals follow Lua's tonumber (10, -3, 1.5, 1e3, 0x10, ...)
 
 local fcitx = require("fcitx")
 
@@ -30,7 +33,7 @@ local AUTO_COMMIT = true
 local Action = fcitx.QuickPhraseAction
 
 ---------------------------------------------------------------------------
--- 字句解析 / 構文解析
+-- Lexer / parser
 ---------------------------------------------------------------------------
 local function tokenize(src)
   local tokens = {}
@@ -54,23 +57,23 @@ local function tokenize(src)
   return tokens
 end
 
--- 戻り値: 数値 / シンボル(文字列) / リスト(テーブル)
+-- Returns a number, a symbol (string) or a list (table)
 local function parse(tokens)
   local pos = 1
   local function read()
     local t = tokens[pos]
-    if t == nil then error("式が閉じていません", 0) end
+    if t == nil then error("unbalanced parentheses", 0) end
     pos = pos + 1
     if t == "(" then
       local list = {}
       while tokens[pos] ~= ")" do
-        if tokens[pos] == nil then error("式が閉じていません", 0) end
+        if tokens[pos] == nil then error("unbalanced parentheses", 0) end
         list[#list + 1] = read()
       end
       pos = pos + 1
       return list
     elseif t == ")" then
-      error("余分な ) があります", 0)
+      error("unexpected )", 0)
     else
       local num = tonumber(t)
       if num ~= nil then return num end
@@ -78,12 +81,12 @@ local function parse(tokens)
     end
   end
   local ast = read()
-  if pos <= #tokens then error("式の後に余分な入力があります", 0) end
+  if pos <= #tokens then error("unexpected input after the expression", 0) end
   return ast
 end
 
 ---------------------------------------------------------------------------
--- 数値ユーティリティ
+-- Number helpers
 ---------------------------------------------------------------------------
 local INT_LIMIT = 2.0 ^ 62
 
@@ -91,12 +94,12 @@ local function is_int(x) return math.type(x) == "integer" end
 
 local function num(x, fname)
   if type(x) ~= "number" then
-    error(fname .. ": 数値が必要です", 0)
+    error(fname .. ": expected a number", 0)
   end
   return x
 end
 
--- 整数同士の演算はオーバーフローしそうなときだけ浮動小数に逃がす
+-- Integer arithmetic falls back to floating point only when it would overflow
 local function arith(a, b, op)
   if is_int(a) and is_int(b) then
     local approx = op(a + 0.0, b + 0.0)
@@ -111,7 +114,7 @@ local sub = function(x, y) return x - y end
 local mul = function(x, y) return x * y end
 
 local function divide(a, b)
-  if b == 0 then error("0 で割ることはできません", 0) end
+  if b == 0 then error("division by zero", 0) end
   if is_int(a) and is_int(b) and a % b == 0 then return a // b end
   return a / b
 end
@@ -135,20 +138,20 @@ local function to_int_if_exact(x)
 end
 
 ---------------------------------------------------------------------------
--- 組み込み関数
+-- Built-in functions
 ---------------------------------------------------------------------------
 local F = {}
 
 local function fn1(name, f)
   return function(args)
-    if #args ~= 1 then error(name .. ": 引数は 1 つです", 0) end
+    if #args ~= 1 then error(name .. ": expected exactly one argument", 0) end
     return f(num(args[1], name))
   end
 end
 
 local function fn2(name, f)
   return function(args)
-    if #args ~= 2 then error(name .. ": 引数は 2 つです", 0) end
+    if #args ~= 2 then error(name .. ": expected exactly two arguments", 0) end
     return f(num(args[1], name), num(args[2], name))
   end
 end
@@ -166,7 +169,7 @@ F["*"] = function(args)
 end
 
 F["-"] = function(args)
-  if #args == 0 then error("-: 引数が必要です", 0) end
+  if #args == 0 then error("-: expected at least one argument", 0) end
   if #args == 1 then return arith(0, num(args[1], "-"), sub) end
   local acc = num(args[1], "-")
   for i = 2, #args do acc = arith(acc, num(args[i], "-"), sub) end
@@ -174,7 +177,7 @@ F["-"] = function(args)
 end
 
 F["/"] = function(args)
-  if #args == 0 then error("/: 引数が必要です", 0) end
+  if #args == 0 then error("/: expected at least one argument", 0) end
   if #args == 1 then return divide(1, num(args[1], "/")) end
   local acc = num(args[1], "/")
   for i = 2, #args do acc = divide(acc, num(args[i], "/")) end
@@ -182,20 +185,20 @@ F["/"] = function(args)
 end
 
 F["mod"] = fn2("mod", function(a, b)
-  if b == 0 then error("mod: 0 で割ることはできません", 0) end
+  if b == 0 then error("mod: division by zero", 0) end
   return a % b
 end)
 F["modulo"] = F["mod"]
 F["%"] = F["mod"]
 
 F["remainder"] = fn2("remainder", function(a, b)
-  if b == 0 then error("remainder: 0 で割ることはできません", 0) end
+  if b == 0 then error("remainder: division by zero", 0) end
   return math.fmod(a, b)
 end)
 F["rem"] = F["remainder"]
 
 F["quotient"] = fn2("quotient", function(a, b)
-  if b == 0 then error("quotient: 0 で割ることはできません", 0) end
+  if b == 0 then error("quotient: division by zero", 0) end
   return truncate(a / b)
 end)
 F["div"] = F["quotient"]
@@ -212,7 +215,7 @@ F["^"] = F["expt"]
 F["**"] = F["expt"]
 
 F["sqrt"] = fn1("sqrt", function(x)
-  if x < 0 then error("sqrt: 負の数は扱えません", 0) end
+  if x < 0 then error("sqrt: negative argument", 0) end
   return to_int_if_exact(math.sqrt(x))
 end)
 F["abs"] = fn1("abs", math.abs)
@@ -220,14 +223,14 @@ F["exp"] = fn1("exp", math.exp)
 F["log"] = function(args)
   if #args == 1 then
     local x = num(args[1], "log")
-    if x <= 0 then error("log: 正の数が必要です", 0) end
+    if x <= 0 then error("log: expected a positive number", 0) end
     return math.log(x)
   elseif #args == 2 then
     local x, b = num(args[1], "log"), num(args[2], "log")
-    if x <= 0 or b <= 0 then error("log: 正の数が必要です", 0) end
+    if x <= 0 or b <= 0 then error("log: expected a positive number", 0) end
     return math.log(x, b)
   end
-  error("log: 引数は 1 つか 2 つです", 0)
+  error("log: expected one or two arguments", 0)
 end
 F["sin"] = fn1("sin", math.sin)
 F["cos"] = fn1("cos", math.cos)
@@ -237,7 +240,7 @@ F["acos"] = fn1("acos", math.acos)
 F["atan"] = function(args)
   if #args == 1 then return math.atan(num(args[1], "atan")) end
   if #args == 2 then return math.atan(num(args[1], "atan"), num(args[2], "atan")) end
-  error("atan: 引数は 1 つか 2 つです", 0)
+  error("atan: expected one or two arguments", 0)
 end
 
 F["floor"] = fn1("floor", function(x) return to_int_if_exact(math.floor(x)) end)
@@ -251,7 +254,7 @@ F["1-"] = fn1("1-", function(x) return arith(x, 1, sub) end)
 
 local function minmax(name, pick)
   return function(args)
-    if #args == 0 then error(name .. ": 引数が必要です", 0) end
+    if #args == 0 then error(name .. ": expected at least one argument", 0) end
     local acc = num(args[1], name)
     for i = 2, #args do
       local v = num(args[i], name)
@@ -269,11 +272,11 @@ local function gcd2(a, b)
   return a
 end
 local function int_args(name, args)
-  if #args == 0 then error(name .. ": 引数が必要です", 0) end
+  if #args == 0 then error(name .. ": expected at least one argument", 0) end
   local out = {}
   for i, v in ipairs(args) do
     local n = to_int_if_exact(num(v, name))
-    if not is_int(n) then error(name .. ": 整数が必要です", 0) end
+    if not is_int(n) then error(name .. ": expected an integer", 0) end
     out[i] = n
   end
   return out
@@ -297,7 +300,7 @@ end
 
 local function compare(name, ok)
   return function(args)
-    if #args < 2 then error(name .. ": 引数は 2 つ以上です", 0) end
+    if #args < 2 then error(name .. ": expected at least two arguments", 0) end
     for i = 1, #args - 1 do
       if not ok(num(args[i], name), num(args[i + 1], name)) then return false end
     end
@@ -310,7 +313,7 @@ F[">"] = compare(">", function(a, b) return a > b end)
 F["<="] = compare("<=", function(a, b) return a <= b end)
 F[">="] = compare(">=", function(a, b) return a >= b end)
 F["not"] = function(args)
-  if #args ~= 1 then error("not: 引数は 1 つです", 0) end
+  if #args ~= 1 then error("not: expected exactly one argument", 0) end
   return args[1] == false
 end
 
@@ -324,14 +327,14 @@ local CONST = {
 }
 
 ---------------------------------------------------------------------------
--- 評価
+-- Evaluation
 ---------------------------------------------------------------------------
 local eval
 
 local SPECIAL = {}
 
 SPECIAL["if"] = function(ast, env)
-  if #ast < 3 or #ast > 4 then error("if: (if 条件 then [else]) の形です", 0) end
+  if #ast < 3 or #ast > 4 then error("if: expected (if test then [else])", 0) end
   if eval(ast[2], env) ~= false then return eval(ast[3], env) end
   if ast[4] ~= nil then return eval(ast[4], env) end
   return false
@@ -354,15 +357,15 @@ SPECIAL["or"] = function(ast, env)
   return false
 end
 
--- (let ((x 1) (y 2)) 本体...) 束縛は順に評価 (let* 相当)
+-- (let ((x 1) (y 2)) body...) bindings are evaluated in order (like let*)
 SPECIAL["let"] = function(ast, env)
   if #ast < 3 or type(ast[2]) ~= "table" then
-    error("let: (let ((変数 値) ...) 本体) の形です", 0)
+    error("let: expected (let ((name value) ...) body)", 0)
   end
   local scope = setmetatable({}, { __index = env })
   for _, binding in ipairs(ast[2]) do
     if type(binding) ~= "table" or #binding ~= 2 or type(binding[1]) ~= "string" then
-      error("let: 束縛は (変数 値) の形です", 0)
+      error("let: each binding must be (name value)", 0)
     end
     scope[binding[1]] = eval(binding[2], scope)
   end
@@ -378,23 +381,23 @@ eval = function(ast, env)
   if t == "string" then
     local v = env[ast]
     if v == nil then v = CONST[ast] end
-    if v == nil then error("未定義のシンボル: " .. ast, 0) end
+    if v == nil then error("undefined symbol: " .. ast, 0) end
     return v
   end
-  if #ast == 0 then error("空の () は評価できません", 0) end
+  if #ast == 0 then error("cannot evaluate empty ()", 0) end
   local head = ast[1]
-  if type(head) ~= "string" then error("関数名が必要です", 0) end
+  if type(head) ~= "string" then error("expected a function name", 0) end
   local special = SPECIAL[head]
   if special then return special(ast, env) end
   local f = F[head]
-  if f == nil then error("未定義の関数: " .. head, 0) end
+  if f == nil then error("undefined function: " .. head, 0) end
   local args = {}
   for i = 2, #ast do args[i - 1] = eval(ast[i], env) end
   return f(args)
 end
 
 ---------------------------------------------------------------------------
--- 結果の文字列化
+-- Formatting the result
 ---------------------------------------------------------------------------
 local function format_value(v)
   if type(v) == "boolean" then return v and "#t" or "#f" end
@@ -413,7 +416,7 @@ local function evaluate_string(src)
 end
 
 ---------------------------------------------------------------------------
--- QuickPhrase ハンドラ
+-- QuickPhrase handler
 ---------------------------------------------------------------------------
 local function paren_depth(s)
   local depth = 0
@@ -429,25 +432,27 @@ local function paren_depth(s)
 end
 
 local function error_hint(result, message)
-  -- DoNothing: 選んでも何も起きない表示専用の候補。NoneSelection で数字キーを選択に使わない
-  result[#result + 1] = { "!", "エラー: " .. message, Action.DoNothing }
+  -- DoNothing: a display-only candidate that does nothing when selected.
+  -- NoneSelection: keep the digit keys from acting as candidate selectors.
+  result[#result + 1] = { "!", "Error: " .. message, Action.DoNothing }
   result[#result + 1] = { "", "", Action.NoneSelection }
 end
 
--- fcitx5-lua から名前で呼ばれるためグローバル関数にする
+-- Must be a global function: fcitx5-lua calls it by name
 function sexp_calc_quickphrase_handler(input)
   if input:sub(1, 1) ~= "(" then
-    return nil -- S式でなければ他のプロバイダに任せる
+    return nil -- not an S-expression: leave it to the other providers
   end
-  -- Break: 内蔵 QuickPhrase 辞書とスペルチェックの候補を抑止する
+  -- Break: suppress candidates from the built-in phrase dictionary and the spell checker
   local result = { { "", "", Action.Break } }
   local depth = paren_depth(input)
   if depth > 0 then
-    -- 入力途中。候補を出すと Space が候補確定になってしまうので何も出さない
+    -- Incomplete input. Show nothing: with a candidate present, Space would
+    -- select it instead of typing a space.
     return result
   end
   if depth < 0 then
-    error_hint(result, "余分な ) があります")
+    error_hint(result, "unexpected )")
     return result
   end
   local ok, value = pcall(evaluate_string, input)
@@ -461,11 +466,11 @@ function sexp_calc_quickphrase_handler(input)
   return result
 end
 
--- 戻り値の ID を保持しないとハンドラが解除されないため、グローバルに保持する
+-- Keep the handler id so it could be removed with fcitx.removeQuickPhraseHandler
 sexp_calc_quickphrase_handler_id = fcitx.addQuickPhraseHandler("sexp_calc_quickphrase_handler")
 fcitx.log("sexp_calc: loaded (AUTO_COMMIT=" .. tostring(AUTO_COMMIT) .. ")")
 
--- テスト用に公開
+-- Exported for the tests
 sexp_calc = {
   tokenize = tokenize,
   parse = parse,

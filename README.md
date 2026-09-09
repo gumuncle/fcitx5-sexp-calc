@@ -36,8 +36,8 @@ Ctrl+Space. In testing, `fcitx5-remote -r` did not pick up newly installed addon
 2. Type an S-expression such as `(+ 1 2)`.
 3. As soon as the parentheses balance, the expression is evaluated and the result `3` is committed.
 
-- Errors are shown as a hint in the candidate list (the messages are currently in Japanese, e.g.
-  `エラー: 未定義の関数: foo` for an undefined function). Press Backspace to fix the expression or Esc to cancel.
+- Errors are shown as a hint in the candidate list, e.g. `Error: undefined function: foo`.
+  Press Backspace to fix the expression or Esc to cancel.
 - No candidates are shown while the expression is incomplete. This is deliberate: as soon as
   QuickPhrase has a candidate, Space selects it instead of typing a space.
 

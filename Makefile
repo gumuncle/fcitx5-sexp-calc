@@ -1,8 +1,8 @@
 # fcitx5-sexp-calc
-#   make install  … ~/.local/share/fcitx5/lua/imeapi/extensions/ にシンボリックリンクを張る
-#   make restart  … fcitx5 を再起動して反映する (IM の状態が英語に戻るので Ctrl+Space で戻す)
-#   make test     … Lua 単体テスト
-#   make e2e      … DBus 経由の実機テスト (fcitx5 起動中、python-gobject が必要)
+#   make install  ... symlink sexp_calc.lua into ~/.local/share/fcitx5/lua/imeapi/extensions/
+#   make restart  ... restart fcitx5 to load it (the IM falls back to the plain keyboard; Ctrl+Space switches back)
+#   make test     ... Lua unit tests
+#   make e2e      ... end-to-end test over DBus (fcitx5 must be running; needs python-gobject)
 
 LUA      ?= lua5.5
 EXT_DIR  := $(HOME)/.local/share/fcitx5/lua/imeapi/extensions
@@ -25,7 +25,7 @@ install:
 	mkdir -p $(EXT_DIR)
 	ln -sfn $(SRC) $(EXT_DIR)/sexp_calc.lua
 	@echo "linked: $(EXT_DIR)/sexp_calc.lua -> $(SRC)"
-	@echo "反映するには: make restart"
+	@echo "Run 'make restart' to load it"
 
 uninstall:
 	rm -f $(EXT_DIR)/sexp_calc.lua

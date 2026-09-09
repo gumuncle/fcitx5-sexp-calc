@@ -1,4 +1,4 @@
--- fcitx5-lua が提供する fcitx モジュールのモック
+-- Mock of the fcitx module provided by fcitx5-lua
 package.preload["fcitx"] = function()
   return {
     QuickPhraseAction = { Break=-1, Commit=0, TypeToBuffer=1, DigitSelection=2, AlphaSelection=3, NoneSelection=4, DoNothing=5, AutoCommit=6 },
@@ -6,8 +6,8 @@ package.preload["fcitx"] = function()
     log = function(msg) io.stderr:write("[log] " .. msg .. "\n") end,
   }
 end
--- テスト対象: 既定ではこのスクリプトと同じリポジトリ内の ../sexp_calc.lua。
--- 環境変数 SEXP_CALC_LUA で差し替え可能。
+-- Target: ../sexp_calc.lua in this repository by default.
+-- Override with the SEXP_CALC_LUA environment variable.
 local script_dir = (arg and arg[0] or ""):match("^(.*)/[^/]*$") or "."
 local target = os.getenv("SEXP_CALC_LUA") or (script_dir .. "/../sexp_calc.lua")
 dofile(target)
@@ -46,7 +46,7 @@ local function expect_error(input, pattern)
   print((ok and "OK  " or "FAIL") .. "  " .. input .. "  =>  " .. tostring(msg) .. (ok and "" or ("  " .. describe(r))))
 end
 
-print("-- 基本")
+print("-- basics")
 expect_commit("(+ 1 2)", "3")
 expect_commit("(+ 1 2 3 4)", "10")
 expect_commit("(- 10 3)", "7")
@@ -61,7 +61,7 @@ expect_commit("(+ 1.5 -2)", "-0.5")
 expect_commit("(* 1.1 1.1)", "1.21")
 expect_commit("(+ 1e3 1)", "1001")
 expect_commit("(+ 0x10 1)", "17")
-print("-- 数学関数")
+print("-- math functions")
 expect_commit("(expt 2 10)", "1024")
 expect_commit("(expt 2 0.5)", "1.4142135623731")
 expect_commit("(expt 2 -1)", "0.5")
@@ -88,11 +88,11 @@ expect_commit("(square 12)", "144")
 expect_commit("(log 100 10)", "2")
 expect_commit("(exp 0)", "1")
 expect_commit("(* 2 pi)", "6.28318530717959")
-print("-- 大きな数")
+print("-- large numbers")
 expect_commit("(* 123456789 987654321)", "121932631112635269")
 expect_commit("(* 9999999999 9999999999 9999999999)", "9.999999997e+29")
 expect_commit("(expt 2 100)", "1.26765060022823e+30")
-print("-- 比較 / 論理 / 特殊形式")
+print("-- comparison / logic / special forms")
 expect_commit("(< 1 2 3)", "#t")
 expect_commit("(= 1 1.0)", "#t")
 expect_commit("(> 1 2)", "#f")
@@ -102,7 +102,7 @@ expect_commit("(and 1 2)", "2")
 expect_commit("(or #f 5)", "5")
 expect_commit("(not #f)", "#t")
 expect_commit("(let ((x 3) (y (* x 2))) (+ x y))", "9")
-print("-- 入力途中 (候補を出してはいけない)")
+print("-- incomplete input (must not produce candidates)")
 expect_no_candidate("(")
 expect_no_candidate("(+")
 expect_no_candidate("(+ ")
@@ -110,16 +110,16 @@ expect_no_candidate("(+ 1")
 expect_no_candidate("(+ 1 2")
 expect_no_candidate("(+ (* 2 3)")
 expect_no_candidate("(+ (* 2 3) 4")
-print("-- エラー (確定候補を出してはいけない)")
-expect_error("()", "空の ()")
-expect_error("(foo 1)", "未定義の関数")
-expect_error("(+ 1 x)", "未定義のシンボル")
-expect_error("(/ 1 0)", "0 で割る")
-expect_error("(1 2)", "関数名")
-expect_error("(+ 1 2))", "余分な )")
-expect_error("(sqrt -1)", "負の数")
-expect_error("(+ 1 2) 3", "余分な入力")
-print("-- 対象外 (nil を返す)")
+print("-- errors (must not produce a commit candidate)")
+expect_error("()", "empty ()")
+expect_error("(foo 1)", "undefined function")
+expect_error("(+ 1 x)", "undefined symbol")
+expect_error("(/ 1 0)", "division by zero")
+expect_error("(1 2)", "function name")
+expect_error("(+ 1 2))", "unexpected )")
+expect_error("(sqrt -1)", "negative")
+expect_error("(+ 1 2) 3", "unexpected input")
+print("-- not ours (returns nil)")
 local r = sexp_calc_quickphrase_handler("hello"); print((r == nil and "OK  " or "FAIL") .. "  hello => " .. describe(r)); if r ~= nil then fails = fails + 1 end
 r = sexp_calc_quickphrase_handler("1+2="); print((r == nil and "OK  " or "FAIL") .. "  1+2= => " .. describe(r)); if r ~= nil then fails = fails + 1 end
 print("")

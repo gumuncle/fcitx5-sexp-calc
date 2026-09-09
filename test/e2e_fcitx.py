@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""fcitx5 の DBus フロントエンド経由で QuickPhrase + sexp_calc を実機テストする。
+"""End-to-end test of QuickPhrase + sexp_calc through fcitx5's DBus frontend.
 
-fcitx5 に DBus で入力コンテキストを作り、QuickPhrase のトリガーキーと式のキー入力を
-送って、CommitString シグナルで確定文字列を観測する。GUI やフォーカスは不要。
+Creates an input context over DBus, sends the QuickPhrase trigger key and the
+keystrokes of an expression, and watches the CommitString signal for the
+committed text. Needs neither a GUI nor keyboard focus.
 
-使い方:
+Usage:
   python3 test/e2e_fcitx.py '(+ 1 2)' --expect 3
   python3 test/e2e_fcitx.py '(+ 1 2)' --expect 3 --trigger semicolon --activate-im
 
-  --trigger grave|semicolon : QuickPhrase のトリガーキー (Super+grave / Super+semicolon)
-  --activate-im             : Ctrl+Space で IM (Mozc) を有効にしてからテストする
-  --expect TEXT             : 期待する確定文字列。一致しなければ終了コード 1
+  --trigger grave|semicolon : QuickPhrase trigger key (Super+grave / Super+semicolon)
+  --activate-im             : press Ctrl+Space first to activate the IM engine (e.g. Mozc)
+  --expect TEXT             : expected committed text; exit code 1 on mismatch
 
-必要: python-gobject (gi)、fcitx5 が起動していること。
+Requires python-gobject (gi) and a running fcitx5.
 """
 import argparse
 import sys
@@ -32,7 +33,7 @@ IC_IFACE = "org.fcitx.Fcitx.InputContext1"
 KEYSTATE_CTRL = 1 << 2
 KEYSTATE_SUPER = 1 << 6
 KEYSYM = {"grave": 0x60, "semicolon": 0x3B, "space": 0x20}
-# ClientSideUI | Preedit | FormattedPreedit: プリエディットをシグナルで受け取る
+# ClientSideUI | Preedit | FormattedPreedit: receive the preedit as signals
 CAPABILITY = 0x13
 
 
@@ -44,22 +45,23 @@ def connect():
             conn.call_sync(BUS, IM_PATH, IM_IFACE, "Version", None, GLib.VariantType("(u)"),
                            Gio.DBusCallFlags.NONE, 2000, None)
             return conn
-        except Exception as e:  # fcitx5 再起動直後などは少し待つ
+        except Exception as e:  # e.g. fcitx5 is still restarting
             last = e
             time.sleep(0.25)
-    sys.exit(f"fcitx5 に接続できません: {last}")
+    sys.exit(f"cannot connect to fcitx5: {last}")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("text", help="QuickPhrase に打ち込む文字列 (例: '(+ 1 2)')")
+    ap.add_argument("text", help="text to type into QuickPhrase, e.g. '(+ 1 2)'")
     ap.add_argument("--trigger", choices=["grave", "semicolon"], default="grave")
-    ap.add_argument("--activate-im", action="store_true", help="Ctrl+Space で IM を有効にしてから打つ")
-    ap.add_argument("--expect", help="期待する確定文字列")
+    ap.add_argument("--activate-im", action="store_true", help="press Ctrl+Space to activate the IM engine before typing")
+    ap.add_argument("--expect", help="expected committed text")
     args = ap.parse_args()
 
     conn = connect()
-    # display を渡して専用のフォーカスグループにしないと、実アプリの IC にフォーカスを奪われる
+    # Pass a display so the IC gets its own focus group; otherwise the real
+    # application's IC steals the focus
     res = conn.call_sync(BUS, IM_PATH, IM_IFACE, "CreateInputContext",
                          GLib.Variant("(a(ss))", [[("program", "sexp-calc-e2e"), ("display", "sexp-calc-e2e:0")]]),
                          GLib.VariantType("(oay)"), Gio.DBusCallFlags.NONE, 5000, None)
@@ -122,7 +124,7 @@ def main():
             print(f"FAIL: expected {[args.expect]}")
             ok = False
     finally:
-        # QuickPhrase が開いたままなら閉じてから破棄する
+        # close QuickPhrase if it is still open, then destroy the IC
         try:
             key(0xFF1B)  # Escape
             call("FocusOut")
