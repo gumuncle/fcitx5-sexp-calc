@@ -1,75 +1,93 @@
 # fcitx5-sexp-calc
 
-fcitx5 の QuickPhrase 上で S式を評価する電卓。`(+ 1 2)` と打つと `3` が入力される。
+English | [日本語](README.ja.md)
 
-- IME 非依存: Mozc が有効でも英語キーボードでも同じように動く
-- fcitx5-lua の QuickPhrase ハンドラとして実装 (本体は `sexp_calc.lua` 1 ファイル)
+An S-expression calculator for [fcitx5](https://fcitx-im.org/) QuickPhrase.
+Type `(+ 1 2)` and `3` is entered, in any application and with any input method engine.
 
-## 必要なもの
+![Demo: typing (+ 1 2) in QuickPhrase commits 3](docs/demo.gif)
 
-- fcitx5 5.1 系
-- [fcitx5-lua](https://github.com/fcitx/fcitx5-lua) (Arch/CachyOS: `sudo pacman -S fcitx5-lua`)
-- テスト用 (任意): Lua 5.5 (`lua5.5`)、python-gobject
+- Engine-independent: works the same whether Mozc, Pinyin or the plain keyboard is active, because it hooks into QuickPhrase rather than the engine
+- A single Lua file (`sexp_calc.lua`) running on [fcitx5-lua](https://github.com/fcitx/fcitx5-lua)
+- The result is committed the moment the parentheses balance, with no extra keystroke
 
-## インストール
+## Requirements
+
+- fcitx5 5.1.x
+- fcitx5-lua (Arch Linux / CachyOS: `sudo pacman -S fcitx5-lua`)
+- Optional, for the tests: Lua 5.5 (`lua5.5`) and python-gobject
+
+## Install
 
 ```sh
-make install   # ~/.local/share/fcitx5/lua/imeapi/extensions/sexp_calc.lua -> リポジトリへのリンク
-make restart   # fcitx5 を再起動して反映
+make install   # symlinks sexp_calc.lua into ~/.local/share/fcitx5/lua/imeapi/extensions/
+make restart   # restarts fcitx5 so the extension gets loaded
 ```
 
-`make restart` は `systemctl --user restart app-org.fcitx.Fcitx5@autostart.service` を実行する。
-再起動後は IM の状態が英語キーボードに戻るので、Ctrl+Space などで Mozc に戻す。
-`fcitx5-remote -r` では新しく入れたアドオンが認識されなかった。
+`make restart` runs `systemctl --user restart app-org.fcitx.Fcitx5@autostart.service`, which is
+the unit name when fcitx5 is started through XDG autostart on a systemd user session. Change
+`UNIT` in the Makefile if your fcitx5 is started differently. After the restart fcitx5 falls back
+to the first input method (usually the plain keyboard), so switch back to your engine with
+Ctrl+Space. In testing, `fcitx5-remote -r` did not pick up newly installed addons.
 
-## 使い方
+## Usage
 
-1. QuickPhrase を起動する。既定キーは `Super+`` または `Super+;`
-2. `(+ 1 2)` のように S式を入力する
-3. 閉じ括弧が揃った時点で評価され、結果 `3` が確定入力される
+1. Open QuickPhrase. The default hotkeys are `Super+`` and `Super+;`.
+2. Type an S-expression such as `(+ 1 2)`.
+3. As soon as the parentheses balance, the expression is evaluated and the result `3` is committed.
 
-- 式に誤りがあると候補欄に「エラー: 未定義の関数: foo」のように理由が出る。Backspace で直すか Esc で取り消す
-- 括弧が閉じきるまでは候補を出さない。候補があると Space が候補選択になり、式の中のスペースが打てなくなるため
+- Errors are shown as a hint in the candidate list (the messages are currently in Japanese, e.g.
+  `エラー: 未定義の関数: foo` for an undefined function). Press Backspace to fix the expression or Esc to cancel.
+- No candidates are shown while the expression is incomplete. This is deliberate: as soon as
+  QuickPhrase has a candidate, Space selects it instead of typing a space.
 
-## 設定
+## Configuration
 
-`sexp_calc.lua` 先頭の `AUTO_COMMIT` を `false` にすると即時確定せず、結果を候補として表示する。
-Space か `1` キーで確定。変更後は `make restart`。
+`AUTO_COMMIT` at the top of `sexp_calc.lua`. Set it to `false` to show the result as a candidate
+instead of committing it immediately; Space or `1` then commits it. Run `make restart` after editing.
 
-## 対応している式
+## Supported expressions
 
-| 種類 | 関数 |
+| Category | Functions |
 | --- | --- |
-| 四則演算 | `+` `-` `*` `/` (可変長引数) |
-| 整数演算 | `mod` (`modulo` `%`) `remainder` (`rem`) `quotient` (`div`) `gcd` `lcm` |
-| べき乗・平方根 | `expt` (`pow` `^` `**`) `sqrt` `square` |
-| 丸め | `floor` `ceiling` (`ceil`) `round` `truncate` `abs` |
-| 指数・対数・三角 | `exp` `log` (1 or 2 引数) `sin` `cos` `tan` `asin` `acos` `atan` (1 or 2 引数) |
-| その他 | `min` `max` `1+` `1-` |
-| 比較・論理 | `=` `<` `>` `<=` `>=` `not`、特殊形式 `if` `and` `or` `let` (`let*`) |
-| 定数 | `pi` `e` `#t` `#f` |
+| Arithmetic | `+` `-` `*` `/` (variadic) |
+| Integer arithmetic | `mod` (`modulo` `%`) `remainder` (`rem`) `quotient` (`div`) `gcd` `lcm` |
+| Powers and roots | `expt` (`pow` `^` `**`) `sqrt` `square` |
+| Rounding | `floor` `ceiling` (`ceil`) `round` `truncate` `abs` |
+| Exponential, logarithm, trigonometry | `exp` `log` (1 or 2 arguments) `sin` `cos` `tan` `asin` `acos` `atan` (1 or 2 arguments) |
+| Misc | `min` `max` `1+` `1-` |
+| Comparison and logic | `=` `<` `>` `<=` `>=` `not`, and the special forms `if` `and` `or` `let` (`let*`) |
+| Constants | `pi` `e` `#t` `#f` |
 
-数値リテラルは Lua の `tonumber` に従う (`10` `-3` `1.5` `1e3` `0x10`)。
-整数同士は整数で計算し、割り切れないときや 2^62 を超えるときだけ浮動小数になる。
-`(/ 6 3)` → `2`、`(/ 7 2)` → `3.5`、`(* 123456789 987654321)` → `121932631112635269`。
+Number literals follow Lua's `tonumber` (`10`, `-3`, `1.5`, `1e3`, `0x10`).
+Integer operands stay integers; the result becomes floating point only when a division is not
+exact or the magnitude exceeds 2^62. `(/ 6 3)` gives `2`, `(/ 7 2)` gives `3.5`, and
+`(* 123456789 987654321)` gives `121932631112635269`.
 
-## 仕組み
+## How it works
 
-fcitx5-lua の imeapi アドオンは `lua/imeapi/extensions/*.lua` を起動時に読み込む。
-本拡張は `fcitx.addQuickPhraseHandler` でハンドラを登録し、QuickPhrase の入力文字列を受け取って
-`{確定文字列, 表示文字列, アクション}` の配列を返す。
+The imeapi addon of fcitx5-lua loads `lua/imeapi/extensions/*.lua` at startup. This extension
+registers a handler with `fcitx.addQuickPhraseHandler`. The handler receives the current
+QuickPhrase input and returns a list of `{commit_text, display_text, action}` entries.
 
-- `(` で始まる入力だけを扱い、`Break` (-1) で内蔵辞書・スペルチェックの候補を抑止する
-- 括弧の深さが 0 になったら評価し、`AutoCommit` (6) で即時確定する
-- 評価に失敗したら `DoNothing` (5) の候補でエラー理由を表示し、`NoneSelection` (4) で数字キーの候補選択を無効にする
+- Only input starting with `(` is handled. `Break` (-1) suppresses the built-in phrase
+  dictionary and the spell checker so they do not add candidates.
+- Once the parenthesis depth returns to zero the input is evaluated and returned with
+  `AutoCommit` (6), which commits the result immediately.
+- If evaluation fails, the reason is shown as a `DoNothing` (5) candidate, and `NoneSelection` (4)
+  keeps the digit keys from acting as candidate selectors.
 
-## 開発
+## Development
 
 ```sh
-make test   # Lua 単体テスト (LUA=lua5.4 make test で処理系を変更可)
-make e2e    # DBus 経由の実機テスト。fcitx5 起動中に実行する
+make test   # Lua unit tests (use LUA=lua5.4 make test to pick another interpreter)
+make e2e    # end-to-end test over DBus; fcitx5 must be running
 ```
 
-`test/e2e_fcitx.py` は fcitx5 の DBus フロントエンドで入力コンテキストを作り、
-キーイベントを送って `CommitString` を観測する。GUI もフォーカスも不要。
-IC 作成時に `display` を渡して専用フォーカスグループにしないと、実アプリの IC にフォーカスを奪われる。
+`test/e2e_fcitx.py` creates an input context through fcitx5's DBus frontend, sends key events
+and watches for `CommitString`. It needs neither a GUI nor keyboard focus. The input context is
+created with a private `display` so it gets its own focus group; otherwise the real application's
+input context steals the focus.
+
+The demo animation is rendered by `python3 docs/make_demo.py` (requires Pillow). It is drawn,
+not screen-recorded; the results it shows are computed by `sexp_calc.lua` itself.
