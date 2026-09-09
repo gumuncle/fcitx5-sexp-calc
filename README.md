@@ -91,3 +91,7 @@ input context steals the focus.
 
 The demo animation is rendered by `python3 docs/make_demo.py` (requires Pillow). It is drawn,
 not screen-recorded; the results it shows are computed by `sexp_calc.lua` itself.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

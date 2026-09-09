@@ -1,4 +1,6 @@
 -- sexp_calc.lua : fcitx5 QuickPhrase 用 S式電卓 (fcitx5-lua 拡張)
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Yusuke Furukawa
 --
 -- 使い方:
 --   1. QuickPhrase を起動する (既定キー: Super+` または Super+;)

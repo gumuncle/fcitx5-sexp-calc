@@ -80,3 +80,7 @@ make e2e    # DBus 経由の実機テスト。fcitx5 起動中に実行する
 `test/e2e_fcitx.py` は fcitx5 の DBus フロントエンドで入力コンテキストを作り、
 キーイベントを送って `CommitString` を観測する。GUI もフォーカスも不要。
 IC 作成時に `display` を渡して専用フォーカスグループにしないと、実アプリの IC にフォーカスを奪われる。
+
+## ライセンス
+
+MIT。詳細は [LICENSE](LICENSE) を参照。
